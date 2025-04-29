@@ -1,0 +1,15 @@
+{
+  "name": "qti-generator-app",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  }
+}
