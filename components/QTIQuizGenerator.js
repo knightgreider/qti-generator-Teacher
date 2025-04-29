@@ -3,159 +3,110 @@ import JSZip from "jszip";
 
 export default function QTIQuizGenerator() {
   const [rawInput, setRawInput] = useState("");
-  const [questions, setQuestions] = useState([
-    { question: "", choices: ["", "", "", ""], answer: 0 },
-  ]);
+  const [questions, setQuestions] = useState([]);
   const [zipUrl, setZipUrl] = useState("");
 
   const parseRawInput = () => {
-    const blocks = rawInput.split(/\n\s*\n/).map(b => b.trim()).filter(b => b);
+    const blocks = rawInput.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
     const parsed = blocks.map(block => {
-      const lines = block.split(/\r?\n/).map(l => l.trim()).filter(l => l);
-      const headerMatch = lines[0].match(/^(MC|TF)::\s*(.+)$/);
-      if (!headerMatch) return null;
-      const type = headerMatch[1];
-      const questionText = headerMatch[2];
+      const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const header = lines[0].match(/^(MC|TF)::\s*(.+)$/);
+      if (!header) return null;
+      const type = header[1];
+      const text = header[2];
       const choices = [];
-      let answerIndex = 0;
-      lines.slice(1).forEach((line, idx) => {
-        const correct = line.startsWith('*~');
-        const text = line.replace(/^[*]?~/, '').trim();
-        choices.push(text);
-        if (correct) answerIndex = idx;
+      let answer = 0;
+      lines.slice(1).forEach((l, i) => {
+        const isCorrect = l.startsWith('*~');
+        const clean = l.replace(/^[*]?~/, '').trim();
+        choices.push(clean);
+        if (isCorrect) answer = i;
       });
-      return { question: questionText, choices, answer: answerIndex };
-    }).filter(q => q);
-    if (parsed.length) setQuestions(parsed);
+      return { question: text, choices, answer };
+    }).filter(Boolean);
+    setQuestions(parsed);
   };
 
-  const handleQuestionChange = (index, field, value) => {
+  const handleQuestionChange = (idx, field, value) => {
     const updated = [...questions];
-    if (field === "question") updated[index].question = value;
-    else updated[index].choices[field] = value;
+    if (field === 'question') updated[idx].question = value;
+    else updated[idx].choices[field] = value;
     setQuestions(updated);
   };
 
-  const handleAnswerChange = (index, value) => {
+  const handleAnswerChange = (idx, value) => {
     const updated = [...questions];
-    updated[index].answer = parseInt(value, 10);
+    updated[idx].answer = parseInt(value, 10) || 0;
     setQuestions(updated);
   };
 
   const addQuestion = () => {
-    setQuestions([
-      ...questions,
-      { question: "", choices: ["", "", "", ""], answer: 0 },
-    ]);
+    setQuestions([...questions, { question: '', choices: ['', '', '', ''], answer: 0 }]);
   };
 
-  const generateQTI = async () => {
+  const generateIMSCC = async () => {
     const zip = new JSZip();
-    const meta = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<quiz ident=\"generated_quiz\">  
-  <title>Generated Quiz</title>
-  ${questions.map((_, i) => `<item_ref linkrefid=\"q${i + 1}\" />`).join("\n  ")}
-</quiz>`;
-    zip.file("assessment_meta.xml", meta);
+    const manifest = `<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="gen1" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1">  
+  <organizations/>  
+  <resources>  
+    <resource identifier="res1" type="imsqti_xmlv1p2" href="assessment.xml">  
+      <file href="assessment.xml"/>  
+    </resource>  
+  </resources>
+</manifest>`;
+    zip.file('imsmanifest.xml', manifest);
 
-    questions.forEach((q, i) => {
-      const qti = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+    const assessment = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
-  <item ident=\"q${i + 1}\" title=\"Question ${i + 1}\">  
-    <presentation>
-      <material>
-        <mattext texttype=\"text/plain\">${q.question}</mattext>
-      </material>
-      <response_lid ident=\"response${i + 1}\" rcardinality=\"Single\">  
-        <render_choice>
-          ${q.choices.map((c, j) => `
-          <response_label ident=\"choice${j}\">  
-            <material><mattext texttype=\"text/plain\">${c}</mattext></material>
-          </response_label>`).join("")}
-        </render_choice>
-      </response_lid>
-    </presentation>
-    <resprocessing>
-      <outcomes>
-        <decvar maxvalue=\"100\" minvalue=\"0\" varname=\"SCORE\" vartype=\"Decimal\" />
-      </outcomes>
-      <respcondition continue=\"No\">  
-        <conditionvar>
-          <varequal respident=\"response${i + 1}\">choice${q.answer}</varequal>
-        </conditionvar>
-        <setvar action=\"Set\">100</setvar>
-      </respcondition>
-    </resprocessing>
-  </item>
+  <assessment title="Generated Quiz">
+    <section ident="root_section">
+${questions.map((q,i) => `      <item ident="q${i+1}" title="Question ${i+1}">
+        <presentation>
+          <material><mattext texttype="text/plain">${q.question}</mattext></material>
+          <response_lid ident="response${i+1}" rcardinality="Single">
+            <render_choice>
+${q.choices.map((c,j) => `              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
+            </render_choice>
+          </response_lid>
+        </presentation>
+        <resprocessing>
+          <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+          <respcondition continue="No"><conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar><setvar action="Set">100</setvar></respcondition>
+        </resprocessing>
+      </item>`).join("\n")}
+    </section>
+  </assessment>
 </questestinterop>`;
-      zip.file(`qti_q${i + 1}.xml.qti`, qti);
-    });
 
-    zip.file("context.xml", "<context></context>");
-    zip.file("course_settings.xml", "<course_settings></course_settings>");
+    zip.file('assessment.xml', assessment);
+    zip.file('context.xml', '<context/>');
+    zip.file('course_settings.xml', '<course_settings/>');
 
-    const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    setZipUrl(url);
+    const blob = await zip.generateAsync({ type: 'blob' });
+    setZipUrl(URL.createObjectURL(blob));
   };
 
   return (
     <div style={{ padding: '1rem' }}>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Paste your questions here:</label><br />
-        <textarea
-          value={rawInput}
-          onChange={e => setRawInput(e.target.value)}
-          rows={10}
-          style={{ width: '100%' }}
-          placeholder={`MC:: Question?\n~Choice1\n*~CorrectChoice\n...`}
-        />
-        <button onClick={parseRawInput} style={{ marginTop: '0.5rem' }}>Import from Text</button>
-      </div>
-      {questions.map((q, i) => (
-        <div key={i} style={{ marginBottom: '1rem', border: '1px solid #ccc', padding: '0.5rem' }}>
-          <div>
-            <label>Question {i + 1}:</label><br />
-            <textarea
-              value={q.question}
-              onChange={e => handleQuestionChange(i, 'question', e.target.value)}
-              rows={2}
-              style={{ width: '100%' }}
-            />
-          </div>
-          {q.choices.map((c, j) => (
-            <div key={j}>
-              <label>Choice {String.fromCharCode(65 + j)}:</label>
-              <input
-                type="text"
-                value={c}
-                onChange={e => handleQuestionChange(i, j, e.target.value)}
-                style={{ width: '100%' }}
-              />
-            </div>
+      <textarea
+        style={{ width: '100%', height: '150px' }}
+        placeholder="MC:: ... or TF:: ... blocks"
+        value={rawInput}
+        onChange={e => setRawInput(e.target.value)}
+      />
+      <button onClick={parseRawInput}>Import from Text</button>
+      {questions.map((q,i) => (
+        <div key={i} style={{ border: '1px solid #ccc', margin: '1rem 0', padding: '0.5rem' }}>
+          <strong>{i+1}. {q.question}</strong>
+          {q.choices.map((c,j) => (
+            <div key={j}>{String.fromCharCode(65+j)}. {c}</div>
           ))}
-          <div>
-            <label>Correct Answer (0-{q.choices.length - 1}):</label>
-            <input
-              type="number"
-              min="0"
-              max={q.choices.length - 1}
-              value={q.answer}
-              onChange={e => handleAnswerChange(i, e.target.value)}
-              style={{ width: '50px' }}
-            />
-          </div>
         </div>
       ))}
-      <button onClick={addQuestion}>Add Question</button>{' '}
-      <button onClick={generateQTI}>Generate IMSCC</button>
-      {zipUrl && (
-        <div style={{ marginTop: '1rem' }}>
-          <a href={zipUrl} download="quiz_canvas_schoology_ready.imscc">
-            <button>Download IMSCC</button>
-          </a>
-        </div>
-      )}
+      <button onClick={addQuestion}>Add Blank Question</button>
+      <button onClick={generateIMSCC}>Download IMSCC</button>
+      {zipUrl && <a href={zipUrl} download="quiz.imscc">Click to Download</a>}
     </div>
   );
 }
