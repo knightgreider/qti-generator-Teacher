@@ -30,14 +30,11 @@ export default function QTIQuizGenerator() {
   // Generate IMSCC package including proper manifest and QTI files
   const generateIMSCC = async () => {
     const zip = new JSZip();
-    const quizFolderName = "Quiz";
+    const quizFolder = zip.folder("Quiz");
 
-    // Create quiz folder
-    const quizFolder = zip.folder(quizFolderName);
-
-    // Add individual QTI files to quiz folder
+    // Add QTI files to Quiz folder
     questions.forEach((q, i) => {
-      const content = `<?xml version="1.0" encoding="UTF-8"?>
+      const qti = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
   <item ident="q${i+1}" title="Question ${i+1}">
     <presentation>
@@ -63,48 +60,47 @@ ${q.choices.map((c,j) => `          <response_label ident="choice${j}"><material
     </resprocessing>
   </item>
 </questestinterop>`;
-      quizFolder.file(`q${i+1}.xml.qti`, content);
+      quizFolder.file(`q${i+1}.xml.qti`, qti);
     });
 
-    // assessment_meta.xml inside quiz folder
+    // assessment_meta.xml
     const assessmentMeta = `<?xml version="1.0" encoding="UTF-8"?>
 <quiz ident="generated">
   <title>Generated Quiz</title>
-  ${questions.map((_, i) => `<item_ref linkrefid="q${i+1}" />`).join("\n  ")}
+  ${questions.map((_, i) => `<item_ref linkrefid=\"q${i+1}\" />`).join("\n  ")}
 </quiz>`;
     quizFolder.file('assessment_meta.xml', assessmentMeta);
 
-    // Build imsmanifest with resource entries for each QTI file
-    const resourceEntries = questions.map((_, i) => {
-      const href = `${quizFolderName}/q${i+1}.xml.qti`;
-      return `    <resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="${href}">
-      <file href="${href}"/>
-    </resource>`;
-    }).join("\n");
-
+    // Build imsmanifest.xml with organization pointing to quiz resource
     const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
     xmlns:imsqti="http://www.imsglobal.org/xsd/imsqti_v1p2"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 imscp_v1p1.xsd">
-  <organizations/>
+  <organizations>
+    <organization identifier="ORG1" structure="hierarchical">
+      <item identifier="ITEM1" identifierref="res_assess"/>
+    </organization>
+  </organizations>
   <resources>
-${resourceEntries}
-    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="${quizFolderName}/assessment_meta.xml">
-      <file href="${quizFolderName}/assessment_meta.xml"/>
+${questions.map((_, i) => `    <resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="Quiz/q${i+1}.xml.qti">
+      <file href="Quiz/q${i+1}.xml.qti"/>
+    </resource>`).join("\n")}
+    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="Quiz/assessment_meta.xml">
+      <file href="Quiz/assessment_meta.xml"/>
     </resource>
   </resources>
 </manifest>`;
     zip.file('imsmanifest.xml', manifest);
 
-    // Additional root files
+    // Additional placeholders
     zip.file('context.xml', '<context/>');
     zip.file('course_settings.xml', '<course_settings/>');
     zip.file('files_meta.xml', '<files_meta/>');
     zip.file('media_tracks.xml', '<media_tracks/>');
 
-    // Generate blob and URL
+    // Generate ZIP blob
     const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
   };
@@ -130,7 +126,6 @@ ${resourceEntries}
           <button onClick={generateIMSCC}>Download .imscc</button>
         </div>
       )}
-
       {zipUrl && <a href={zipUrl} download="quiz.imscc">Download .imscc</a>}
     </div>
   );
