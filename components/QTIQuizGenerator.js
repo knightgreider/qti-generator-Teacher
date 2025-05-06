@@ -37,7 +37,7 @@ export default function QTIQuizGenerator() {
     const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
 <quiz ident="generated_quiz">
   <title>${quizTitle}</title>
-  ${questions.map((_, i) => `<item_ref linkrefid=\"q${i+1}\" />`).join("\n  ")}
+  ${questions.map((_, i) => `<item_ref linkrefid="q${i + 1}" />`).join("\n  ")}
 </quiz>`;
     folder.file('assessment_meta.xml', metaXml);
 
@@ -45,14 +45,14 @@ export default function QTIQuizGenerator() {
     questions.forEach((q, i) => {
       const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
-  <item ident="q${i+1}" title="Question ${i+1}">
+  <item ident="q${i + 1}" title="Question ${i + 1}">
     <presentation>
       <material>
         <mattext texttype="text/plain">${q.question}</mattext>
       </material>
-      <response_lid ident="response${i+1}" rcardinality="Single">
+      <response_lid ident="response${i + 1}" rcardinality="Single">
         <render_choice>
-${q.choices.map((c,j) => `          <response_label ident=\"choice${j}\"><material><mattext texttype=\"text/plain\">${c}</mattext></material></response_label>`).join("\n")}
+${q.choices.map((c, j) => `          <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
         </render_choice>
       </response_lid>
     </presentation>
@@ -62,14 +62,14 @@ ${q.choices.map((c,j) => `          <response_label ident=\"choice${j}\"><materi
       </outcomes>
       <respcondition continue="No">
         <conditionvar>
-          <varequal respident=\"response${i+1}\">choice${q.answer}</varequal>
+          <varequal respident="response${i + 1}">choice${q.answer}</varequal>
         </conditionvar>
-        <setvar action=\"Set\">100</setvar>
+        <setvar action="Set">100</setvar>
       </respcondition>
     </resprocessing>
   </item>
 </questestinterop>`;
-      folder.file(`q${i+1}.xml.qti`, qtiXml);
+      folder.file(`q${i + 1}.xml.qti`, qtiXml);
     });
 
     // Build root imsmanifest.xml referencing quiz folder
@@ -85,7 +85,9 @@ ${q.choices.map((c,j) => `          <response_label ident=\"choice${j}\"><materi
     </organization>
   </organizations>
   <resources>
-${questions.map((_, i) => `    <resource identifier=\"res_q${i+1}\" type=\"imsqti_xmlv1p2\" href=\"${quizTitle}/q${i+1}.xml.qti\">\n      <file href=\"${quizTitle}/q${i+1}.xml.qti\"/>\n    </resource>`).join("\n")}
+${questions.map((_, i) => `    <resource identifier="res_q${i + 1}" type="imsqti_xmlv1p2" href="${quizTitle}/q${i + 1}.xml.qti">
+      <file href="${quizTitle}/q${i + 1}.xml.qti"/>
+    </resource>`).join("\n")}
     <resource identifier="res_assess" type="imsqti_xmlv1p2" href="${quizTitle}/assessment_meta.xml">
       <file href="${quizTitle}/assessment_meta.xml"/>
     </resource>
@@ -118,8 +120,8 @@ ${questions.map((_, i) => `    <resource identifier=\"res_q${i+1}\" type=\"imsqt
         <div style={{ margin: '1rem 0' }}>
           {questions.map((q, i) => (
             <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <strong>{i+1}. {q.question}</strong>
-              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65+j)}. {c}</div>)}
+              <strong>{i + 1}. {q.question}</strong>
+              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65 + j)}. {c}</div>)}
             </div>
           ))}
           <button onClick={generateIMSCC}>Download .imscc</button>
