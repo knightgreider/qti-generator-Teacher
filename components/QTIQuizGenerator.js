@@ -37,18 +37,21 @@ export default function QTIQuizGenerator() {
 <questestinterop>
   <assessment title="Generated Quiz">
     <section ident="root_section">
-${questions.map((q,i) => `      <item ident="q${i+1}" title="Question ${i+1}">
+${questions.map((q, i) => `      <item ident="q${i+1}" title="Question ${i+1}">
         <presentation>
           <material><mattext texttype="text/plain">${q.question}</mattext></material>
           <response_lid ident="response${i+1}" rcardinality="Single">
             <render_choice>
-${q.choices.map((c,j) => `              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
+${q.choices.map((c, j) => `              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
             </render_choice>
           </response_lid>
         </presentation>
         <resprocessing>
           <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
-          <respcondition continue="No"><conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar><setvar action="Set">100</setvar></respcondition>
+          <respcondition continue="No">
+            <conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar>
+            <setvar action="Set">100</setvar>
+          </respcondition>
         </resprocessing>
       </item>`).join("\n")}
     </section>
@@ -56,7 +59,7 @@ ${q.choices.map((c,j) => `              <response_label ident="choice${j}"><mate
 </questestinterop>`;
     quizFolder.file('assessment.xml', assessmentXml);
 
-    // Build imsmanifest.xml
+    // Build imsmanifest.xml with organization and resources
     const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -76,6 +79,39 @@ ${q.choices.map((c,j) => `              <response_label ident="choice${j}"><mate
 </manifest>`;
     zip.file('imsmanifest.xml', manifest);
 
-    // Root placeholders
-    ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
-      zip.file(name, `<${name.replace(/\..+/, '')}/>`);
+    // Root placeholders for Schoology
+    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach(name => {
+      zip.file(name, `<${name.split('.')[0]}/>`);
+    });
+
+    // Generate the IMSCC blob and URL
+    const blob = await zip.generateAsync({ type: 'blob' });
+    setZipUrl(URL.createObjectURL(blob));
+  };
+
+  return (
+    <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
+      <textarea
+        style={{ width: '100%', height: 150, marginBottom: 8 }}
+        placeholder="MC:: ... or TF:: ... blocks"
+        value={rawInput}
+        onChange={e => setRawInput(e.target.value)}
+      />
+      <button onClick={parseRawInput} disabled={!rawInput}>Import</button>
+
+      {questions.length > 0 && (
+        <div style={{ margin: '1rem 0' }}>
+          {questions.map((q, i) => (
+            <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
+              <strong>{i+1}. {q.question}</strong>
+              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65 + j)}. {c}</div>)}
+            </div>
+          ))}
+          <button onClick={generateIMSCC}>Download .imscc</button>
+        </div>
+      )}
+
+      {zipUrl && <a href={zipUrl} download="quiz.imscc">Download .imscc</a>}
+    </div>
+  );
+}
