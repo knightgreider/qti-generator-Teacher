@@ -27,20 +27,19 @@ export default function QTIQuizGenerator() {
     setQuestions(parsed);
   };
 
-  // Generate IMSCC package with single QTI file and manifest
+  // Generate IMSCC package with Canvas-style .qti file and manifest
   const generateIMSCC = async () => {
     const zip = new JSZip();
+    const quizFolder = zip.folder("Quiz");
 
-    // Build single QTI assessment file
+    // Build Canvas-compatible QTI file (assessment.xml.qti)
     const assessmentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
   <assessment title="Generated Quiz">
     <section ident="root_section">
 ${questions.map((q, i) => `      <item ident="q${i+1}" title="Question ${i+1}">
         <presentation>
-          <material>
-            <mattext texttype="text/plain">${q.question}</mattext>
-          </material>
+          <material><mattext texttype="text/plain">${q.question}</mattext></material>
           <response_lid ident="response${i+1}" rcardinality="Single">
             <render_choice>
 ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
@@ -48,13 +47,9 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
           </response_lid>
         </presentation>
         <resprocessing>
-          <outcomes>
-            <decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/>
-          </outcomes>
+          <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
           <respcondition continue="No">
-            <conditionvar>
-              <varequal respident="response${i+1}">choice${q.answer}</varequal>
-            </conditionvar>
+            <conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar>
             <setvar action="Set">100</setvar>
           </respcondition>
         </resprocessing>
@@ -62,9 +57,9 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </section>
   </assessment>
 </questestinterop>`;
-    zip.file('assessment.xml', assessmentXml);
+    quizFolder.file('assessment.xml.qti', assessmentXml);
 
-    // Build imsmanifest.xml referencing assessment.xml
+    // Build imsmanifest.xml with linkage
     const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -77,20 +72,20 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </organization>
   </organizations>
   <resources>
-    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="assessment.xml">
-      <file href="assessment.xml"/>
+    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="Quiz/assessment.xml.qti">
+      <file href="Quiz/assessment.xml.qti"/>
     </resource>
   </resources>
 </manifest>`;
     zip.file('imsmanifest.xml', manifest);
 
-    // Add placeholder files for Schoology
-    ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
+    // Add placeholder files for Schoology's import requirements
+    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach(name => {
       const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>');
+      zip.file(name, `<${tag}/>`);
     });
 
-    // Generate blob and URL
+    // Generate ZIP blob and URL
     const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
   };
@@ -110,13 +105,12 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
           {questions.map((q, i) => (
             <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
               <strong>{i+1}. {q.question}</strong>
-              {q.choices.map((c,j) => <div key={j}>{String.fromCharCode(65+j)}. {c}</div>)}
+              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65+j)}. {c}</div>)}
             </div>
           ))}
           <button onClick={generateIMSCC}>Download .imscc</button>
         </div>
       )}
-
       {zipUrl && <a href={zipUrl} download="quiz.imscc">Download .imscc</a>}
     </div>
   );
