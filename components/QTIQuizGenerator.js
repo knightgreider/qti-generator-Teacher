@@ -27,19 +27,20 @@ export default function QTIQuizGenerator() {
     setQuestions(parsed);
   };
 
-  // Generate IMSCC package with proper manifest and QTI
+  // Generate IMSCC package with single QTI file and manifest
   const generateIMSCC = async () => {
     const zip = new JSZip();
-    const quizFolder = zip.folder("Quiz");
 
-    // Build assessment.xml (QTI 1.2)
+    // Build single QTI assessment file
     const assessmentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
   <assessment title="Generated Quiz">
     <section ident="root_section">
 ${questions.map((q, i) => `      <item ident="q${i+1}" title="Question ${i+1}">
         <presentation>
-          <material><mattext texttype="text/plain">${q.question}</mattext></material>
+          <material>
+            <mattext texttype="text/plain">${q.question}</mattext>
+          </material>
           <response_lid ident="response${i+1}" rcardinality="Single">
             <render_choice>
 ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
@@ -47,9 +48,13 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
           </response_lid>
         </presentation>
         <resprocessing>
-          <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+          <outcomes>
+            <decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/>
+          </outcomes>
           <respcondition continue="No">
-            <conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar>
+            <conditionvar>
+              <varequal respident="response${i+1}">choice${q.answer}</varequal>
+            </conditionvar>
             <setvar action="Set">100</setvar>
           </respcondition>
         </resprocessing>
@@ -57,9 +62,9 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </section>
   </assessment>
 </questestinterop>`;
-    quizFolder.file('assessment.xml', assessmentXml);
+    zip.file('assessment.xml', assessmentXml);
 
-    // Build imsmanifest.xml with organization linking to assessment
+    // Build imsmanifest.xml referencing assessment.xml
     const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -72,18 +77,17 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </organization>
   </organizations>
   <resources>
-    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="Quiz/assessment.xml">
-      <file href="Quiz/assessment.xml"/>
+    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="assessment.xml">
+      <file href="assessment.xml"/>
     </resource>
-    ${questions.map((_, i) => `<resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="Quiz/q${i+1}.xml.qti"><file href="Quiz/q${i+1}.xml.qti"/></resource>`).join("\n    ")}
   </resources>
 </manifest>`;
     zip.file('imsmanifest.xml', manifest);
 
-    // Root placeholders
+    // Add placeholder files for Schoology
     ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
       const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>`);
+      zip.file(name, `<${tag}/>');
     });
 
     // Generate blob and URL
