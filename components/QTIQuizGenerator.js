@@ -82,7 +82,8 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
 
     // Root placeholders
     ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
-      zip.file(name, `<${name.split('.')[0]}/>');
+      const tag = name.split('.')[0];
+      zip.file(name, `<${tag}/>`);
     });
 
     // Generate blob and URL
@@ -116,4 +117,3 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </div>
   );
 }
-// Usage example
