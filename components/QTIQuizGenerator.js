@@ -27,12 +27,12 @@ export default function QTIQuizGenerator() {
     setQuestions(parsed);
   };
 
-  // Generate IMSCC package with single QTI assessment file
+  // Generate IMSCC package with proper manifest and QTI
   const generateIMSCC = async () => {
     const zip = new JSZip();
     const quizFolder = zip.folder("Quiz");
 
-    // Build assessment.xml content (QTI 1.2)
+    // Build assessment.xml (QTI 1.2)
     const assessmentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
   <assessment title="Generated Quiz">
@@ -59,7 +59,7 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
 </questestinterop>`;
     quizFolder.file('assessment.xml', assessmentXml);
 
-    // Build imsmanifest.xml with organization and resources
+    // Build imsmanifest.xml with organization linking to assessment
     const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -75,16 +75,17 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     <resource identifier="res_assess" type="imsqti_xmlv1p2" href="Quiz/assessment.xml">
       <file href="Quiz/assessment.xml"/>
     </resource>
+    ${questions.map((_, i) => `<resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="Quiz/q${i+1}.xml.qti"><file href="Quiz/q${i+1}.xml.qti"/></resource>`).join("\n    ")}
   </resources>
 </manifest>`;
     zip.file('imsmanifest.xml', manifest);
 
-    // Root placeholders for Schoology
-    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach(name => {
-      zip.file(name, `<${name.split('.')[0]}/>`);
+    // Root placeholders
+    ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
+      zip.file(name, `<${name.split('.')[0]}/>');
     });
 
-    // Generate the IMSCC blob and URL
+    // Generate blob and URL
     const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
   };
@@ -104,7 +105,7 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
           {questions.map((q, i) => (
             <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
               <strong>{i+1}. {q.question}</strong>
-              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65 + j)}. {c}</div>)}
+              {q.choices.map((c,j) => <div key={j}>{String.fromCharCode(65+j)}. {c}</div>)}
             </div>
           ))}
           <button onClick={generateIMSCC}>Download .imscc</button>
@@ -115,3 +116,4 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </div>
   );
 }
+// Usage example
