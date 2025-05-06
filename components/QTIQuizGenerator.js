@@ -57,9 +57,9 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </section>
   </assessment>
 </questestinterop>`;
-    quizFolder.file('assessment.xml', assessmentXml);
+    quizFolder.file('assessment.xml.qti', assessmentXml);
 
-    // Build imsmanifest.xml with linkage
+    // Build imsmanifest.xml with linkage to the .qti file
     const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -72,8 +72,8 @@ ${q.choices.map((c, j) => `              <response_label ident="choice${j}"><mat
     </organization>
   </organizations>
   <resources>
-    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="Quiz/assessment.xml">
-      <file href="Quiz/assessment.xml"/>
+    <resource identifier="res_assess" type="imsqti_xmlv1p2" href="Quiz/assessment.xml.qti">
+      <file href="Quiz/assessment.xml.qti"/>
     </resource>
   </resources>
 </manifest>`;
