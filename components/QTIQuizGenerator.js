@@ -7,7 +7,7 @@ export default function QTIQuizGenerator() {
   const [questions, setQuestions] = useState([]);
   const [zipUrl, setZipUrl] = useState("");
 
-  // Parse MC:: or TF:: formatted text into question objects
+  // Parse input
   const parseRawInput = () => {
     const blocks = rawInput.split(/\r?\n\s*\r?\n/).map(b => b.trim()).filter(Boolean);
     const parsed = blocks.map(block => {
@@ -19,8 +19,7 @@ export default function QTIQuizGenerator() {
       let answerIndex = 0;
       lines.slice(1).forEach((line, idx) => {
         const isCorrect = line.startsWith('*~');
-        const text = line.replace(/^[*]?~/, '').trim();
-        choices.push(text);
+        choices.push(line.replace(/^[*]?~/, '').trim());
         if (isCorrect) answerIndex = idx;
       });
       return { question: questionText, choices, answer: answerIndex };
@@ -28,56 +27,39 @@ export default function QTIQuizGenerator() {
     setQuestions(parsed);
   };
 
-  // Generate IMSCC package matching Schoology's format
+  // Generate IMSCC with a single QTI file
   const generateIMSCC = async () => {
-    if (!title) {
-      alert('Please enter a quiz title.');
-      return;
-    }
+    if (!title) { alert('Enter a quiz title'); return; }
     const zip = new JSZip();
-    const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
+    const resourceId = 'ccres' + Math.random().toString(36).substr(2,8);
     const folder = zip.folder(resourceId);
 
-    // Build assessment_meta.xml inside quiz folder
-    const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
-<quiz ident="${resourceId}">
-  <title>${title}</title>
-  ${questions.map((_, i) => `<item_ref linkrefid="q${i+1}" />`).join("\n  ")}
-</quiz>`;
-    folder.file('assessment_meta.xml', metaXml);
-
-    // Create one QTI file per question
-    questions.forEach((q, i) => {
-      const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
+    // Build QTI XML containing all items
+    const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
-  <item ident="q${i+1}" title="Question ${i+1}">
-    <presentation>
-      <material><mattext texttype="text/plain">${q.question}</mattext></material>
-      <response_lid ident="response${i+1}" rcardinality="Single">
-        <render_choice>
-${q.choices.map((c,j) => `          <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
-        </render_choice>
-      </response_lid>
-    </presentation>
-    <resprocessing>
-      <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
-      <respcondition continue="No">
-        <conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar>
-        <setvar action="Set">100</setvar>
-      </respcondition>
-    </resprocessing>
-  </item>
+  <assessment title="${title}">
+    <section ident="root_section">
+${questions.map((q,i) => `      <item ident="q${i+1}" title="${q.question}">
+        <presentation>
+          <material><mattext texttype="text/plain">${q.question}</mattext></material>
+          <response_lid ident="response${i+1}" rcardinality="Single">
+            <render_choice>
+${q.choices.map((c,j)=>`              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
+            </render_choice>
+          </response_lid>
+        </presentation>
+        <resprocessing>
+          <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+          <respcondition continue="No"><conditionvar><varequal respident="response${i+1}">choice${q.answer}</varequal></conditionvar><setvar action="Set">100</setvar></respcondition>
+        </resprocessing>
+      </item>`).join("\n")}
+    </section>
+  </assessment>
 </questestinterop>`;
-      folder.file(`q${i+1}.xml.qti`, qtiXml);
-    });
+    folder.file(`${resourceId}.xml`, qtiXml);
 
-    // Root imsmanifest.xml
-    const resourcesXml = questions.map((_, i) =>
-      `    <resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="${resourceId}/q${i+1}.xml.qti">
-      <file href="${resourceId}/q${i+1}.xml.qti"/>
-    </resource>`
-    ).join("\n");
-    const manifestXml = `<?xml version="1.0" encoding="UTF-8"?>
+    // Root manifest
+    const manifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
     xmlns:imsqti="http://www.imsglobal.org/xsd/imsqti_v1p2"
@@ -85,57 +67,33 @@ ${q.choices.map((c,j) => `          <response_label ident="choice${j}"><material
     xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 imscp_v1p1.xsd">
   <organizations>
     <organization identifier="ORG1" structure="hierarchical">
-      <item identifier="ASSESS1" identifierref="${resourceId}_assess"/>
+      <item identifier="ITEM1" identifierref="${resourceId}"/>
     </organization>
   </organizations>
   <resources>
-${resourcesXml}
-    <resource identifier="${resourceId}_assess" type="imsqti_xmlv1p2" href="${resourceId}/assessment_meta.xml">
-      <file href="${resourceId}/assessment_meta.xml"/>
+    <resource identifier="${resourceId}" type="imsqti_xmlv1p2" href="${resourceId}/${resourceId}.xml">
+      <file href="${resourceId}/${resourceId}.xml"/>
     </resource>
   </resources>
 </manifest>`;
-    zip.file('imsmanifest.xml', manifestXml);
+    zip.file('imsmanifest.xml', manifest);
 
-    // Placeholder files
-    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach(name => {
-      const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>`);
+    // Placeholders
+    ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name=>{
+      const t=name.split('.')[0]; zip.file(name,`<${t}/>`);
     });
 
-    const blob = await zip.generateAsync({ type: 'blob' });
+    const blob=await zip.generateAsync({type:'blob'});
     setZipUrl(URL.createObjectURL(blob));
   };
 
   return (
-    <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
-      <input
-        style={{ width: '100%', marginBottom: 8, padding: 4 }}
-        placeholder="Enter Quiz Title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <textarea
-        style={{ width: '100%', height: 150, marginBottom: 8 }}
-        placeholder="Paste your MC:: or TF:: formatted questions here"
-        value={rawInput}
-        onChange={(e) => setRawInput(e.target.value)}
-      />
-      <button onClick={parseRawInput} disabled={!rawInput}>Import Questions</button>
-
-      {questions.length > 0 && (
-        <div style={{ margin: '1rem 0' }}>
-          {questions.map((q, i) => (
-            <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <strong>{i + 1}. {q.question}</strong>
-              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65 + j)}. {c}</div>)}
-            </div>
-          ))}
-          <button onClick={generateIMSCC}>Download .imscc</button>
-        </div>
-      )}
-
-      {zipUrl && <a href={zipUrl} download="quiz.imscc">Download .imscc</a>}
+    <div style={{padding:'1rem',fontFamily:'sans-serif'}}>
+      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Quiz Title" style={{width:'100%',marginBottom:8,padding:4}}/>
+      <textarea value={rawInput} onChange={e=>setRawInput(e.target.value)} placeholder="MC:: ... or TF:: ..." style={{width:'100%',height:150,marginBottom:8}}/>
+      <button onClick={parseRawInput} disabled={!rawInput}>Parse</button>
+      {questions.length>0&&<button onClick={generateIMSCC} style={{marginLeft:8}}>Download .imscc</button>}
+      {zipUrl&&<div><a href={zipUrl} download="quiz.imscc">Download IMSCC</a></div>}
     </div>
   );
 }
