@@ -34,8 +34,8 @@ export default function QTIQuizGenerator() {
   // Generate IMSCC package matching Schoology's structure
   const generateIMSCC = async () => {
     const zip = new JSZip();
-    // derive quiz title from first question header
-    const firstLine = rawInput.split(/\r?\n/)[0] || '';
+    // derive quiz title from first question header (simple split)
+    const firstLine = rawInput.split('\n')[0] || '';
     const quizTitle = firstLine.replace(/^(MC|TF)::\s*/, '').trim() || 'Generated Quiz';
     const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
     const folder = zip.folder(resourceId);
@@ -131,25 +131,15 @@ ${resourcesXml}
         <div style={{ margin: '1rem 0' }}>
           {questions.map((q, i) => (
             <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <strong>
-                {i + 1}. {q.question}
-              </strong>
-              {q.choices.map((c, j) => (
-                <div key={j}>
-                  {String.fromCharCode(65 + j)}. {c}
-                </div>
-              ))}
+              <strong>{i+1}. {q.question}</strong>
+              {q.choices.map((c, j) => <div key={j}>{String.fromCharCode(65+j)}. {c}</div>)}
             </div>
           ))}
           <button onClick={generateIMSCC}>Download .imscc</button>
         </div>
       )}
 
-      {zipUrl && (
-        <a href={zipUrl} download="quiz.imscc">
-          Download .imscc
-        </a>
-      )}
+      {zipUrl && <a href={zipUrl} download="quiz.imscc">Download .imscc</a>}
     </div>
   );
 }
