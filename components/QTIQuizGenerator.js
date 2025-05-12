@@ -37,7 +37,7 @@ export default function QTIQuizGenerator() {
     const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
     const folder = zip.folder(resourceId);
 
-    // Build single .xml.qti QTI file containing all questions
+    // Build single .xml QTI file containing all questions
     const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
   <assessment title="${title}">
@@ -62,9 +62,9 @@ ${q.choices.map((c,j) => `              <response_label ident="choice${j}"><mate
     </section>
   </assessment>
 </questestinterop>`;
-    folder.file(`${resourceId}.xml.qti`, qtiXml);
+    folder.file(`${resourceId}.xml`, qtiXml);
 
-    // Build root imsmanifest.xml referencing the .xml.qti file
+    // Build root imsmanifest.xml referencing the .xml file
     const manifestXml = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -77,8 +77,8 @@ ${q.choices.map((c,j) => `              <response_label ident="choice${j}"><mate
     </organization>
   </organizations>
   <resources>
-    <resource identifier="${resourceId}" type="imsqti_xmlv1p2" href="${resourceId}/${resourceId}.xml.qti">
-      <file href="${resourceId}/${resourceId}.xml.qti"/>
+    <resource identifier="${resourceId}" type="imsqti_xmlv1p2" href="${resourceId}/${resourceId}.xml">
+      <file href="${resourceId}/${resourceId}.xml"/>
     </resource>
   </resources>
 </manifest>`;
