@@ -8,7 +8,7 @@ export default function QTIQuizGenerator() {
 
   // Parse MC:: or TF:: formatted text into question objects
   const parseRawInput = () => {
-    const blocks = rawInput.split(/\n\s*\n/)
+    const blocks = rawInput.split(/\r?\n\s*\r?\n/)
       .map((b) => b.trim())
       .filter(Boolean);
     const parsed = blocks
@@ -34,24 +34,23 @@ export default function QTIQuizGenerator() {
   // Generate IMSCC package matching Schoology's structure
   const generateIMSCC = async () => {
     const zip = new JSZip();
-    const quizTitle = rawInput.split(/
-?
-/)[0].slice(4).trim() || 'Generated Quiz';
+    // derive quiz title from first question header
+    const firstLine = rawInput.split(/\r?\n/)[0] || '';
+    const quizTitle = firstLine.replace(/^(MC|TF)::\s*/, '').trim() || 'Generated Quiz';
     const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
     const folder = zip.folder(resourceId);
 
-    // Build assessment_meta.xml inside resource folder
+    // Create assessment_meta.xml inside resource folder
     const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
 <quiz ident="${resourceId}">
   <title>${quizTitle}</title>
-  ${questions.map((_, i) => `<item_ref linkrefid="q${i+1}" />`).join("
-  ")}
+  ${questions.map((_, i) => `<item_ref linkrefid="q${i+1}" />`).join("\n  ")}
 </quiz>`;
     folder.file('assessment_meta.xml', metaXml);
 
-    // Build each question as its own .xml.qti
+    // Create one .xml.qti file per question
     questions.forEach((q, i) => {
-      const itemXml = `<?xml version="1.0" encoding="UTF-8"?>
+      const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop>
   <item ident="q${i+1}" title="Question ${i+1}">
     <presentation>
@@ -60,8 +59,7 @@ export default function QTIQuizGenerator() {
       </material>
       <response_lid ident="response${i+1}" rcardinality="Single">
         <render_choice>
-${q.choices.map((c,j) => `          <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("
-")}
+${q.choices.map((c, j) => `          <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
         </render_choice>
       </response_lid>
     </presentation>
@@ -78,14 +76,15 @@ ${q.choices.map((c,j) => `          <response_label ident="choice${j}"><material
     </resprocessing>
   </item>
 </questestinterop>`;
-      folder.file(`q${i+1}.xml.qti`, itemXml);
+      folder.file(`q${i+1}.xml.qti`, qtiXml);
     });
 
-    // Build root imsmanifest.xml referencing each resource
-    const resourcesXml = questions.map((_, i) => `    <resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="${resourceId}/q${i+1}.xml.qti">
+    // Build root imsmanifest.xml referencing quiz folder
+    const resourcesXml = questions
+      .map((_, i) => `    <resource identifier="res_q${i+1}" type="imsqti_xmlv1p2" href="${resourceId}/q${i+1}.xml.qti">
       <file href="${resourceId}/q${i+1}.xml.qti"/>
-    </resource>`).join("
-");
+    </resource>`)
+      .join("\n");
     const manifestXml = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
     xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -109,18 +108,48 @@ ${resourcesXml}
     // Add Schoology placeholder files
     ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach((name) => {
       const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>');
+      zip.file(name, `<${tag}/>`);
     });
 
     const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
   };
 
-  // End of component logic
-
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
-      {/* ... UI unchanged ... */}
+      <textarea
+        style={{ width: '100%', height: 150, marginBottom: 8 }}
+        placeholder="MC:: ... or TF:: ... blocks"
+        value={rawInput}
+        onChange={(e) => setRawInput(e.target.value)}
+      />
+      <button onClick={parseRawInput} disabled={!rawInput}>
+        Import
+      </button>
+
+      {questions.length > 0 && (
+        <div style={{ margin: '1rem 0' }}>
+          {questions.map((q, i) => (
+            <div key={i} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
+              <strong>
+                {i + 1}. {q.question}
+              </strong>
+              {q.choices.map((c, j) => (
+                <div key={j}>
+                  {String.fromCharCode(65 + j)}. {c}
+                </div>
+              ))}
+            </div>
+          ))}
+          <button onClick={generateIMSCC}>Download .imscc</button>
+        </div>
+      )}
+
+      {zipUrl && (
+        <a href={zipUrl} download="quiz.imscc">
+          Download .imscc
+        </a>
+      )}
     </div>
   );
 }
