@@ -62,7 +62,7 @@ export default function QTIQuizGenerator() {
     // Schoology placeholder files
     ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach(name => {
       const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>');
+      zip.file(name, `<${tag}/>`);
     });
 
     const blob = await zip.generateAsync({ type: 'blob' });
