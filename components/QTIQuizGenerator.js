@@ -28,47 +28,86 @@ export default function QTIQuizGenerator() {
     setQuestions(parsed);
   };
 
-  // Generate IMSCC zip with a single composite QTI file matching Schoology export
+  // Generate IMSCC zip with composite QTI including Schoology metadata
   const generateIMSCC = async () => {
-    if (!title) { alert('Enter quiz title'); return; }
+    if (!title) { alert('Please enter a quiz title'); return; }
     const zip = new JSZip();
     const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
     const folder = zip.folder(resourceId);
 
-    // Build composite QTI XML
+    // Build composite QTI XML with metadata
     const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
-<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd">
+<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd">
   <assessment ident="${resourceId}" title="${title}">
+    <!-- Schoology assessment metadata -->
+    <qtimetadata>
+      <qtimetadatafield>
+        <fieldlabel>cc_profile</fieldlabel>
+        <fieldentry>cc.exam.v0p1</fieldentry>
+      </qtimetadatafield>
+      <qtimetadatafield>
+        <fieldlabel>qmd_assessmenttype</fieldlabel>
+        <fieldentry>Examination</fieldentry>
+      </qtimetadatafield>
+      <qtimetadatafield>
+        <fieldlabel>qmd_scoretype</fieldlabel>
+        <fieldentry>Percentage</fieldentry>
+      </qtimetadatafield>
+      <qtimetadatafield>
+        <fieldlabel>cc_maxattempts</fieldlabel>
+        <fieldentry>1</fieldentry>
+      </qtimetadatafield>
+    </qtimetadata>
     <section ident="root_section">
-${questions.map((q,i) => `      <item ident="${i+1}">
+${questions.map((q, i) => {
+  const idx = i + 1;
+  return `      <item ident="q${idx}" title="Question ${idx}">
+        <!-- Schoology item metadata -->
+        <itemmetadata>
+          <qtimetadata>
+            <qtimetadatafield>
+              <fieldlabel>cc_profile</fieldlabel>
+              <fieldentry>cc.multiple_choice.v0p1</fieldentry>
+            </qtimetadatafield>
+          </qtimetadata>
+        </itemmetadata>
         <presentation>
-          <material><mattext texttype="text/html">${q.question}</mattext></material>
-          <response_lid ident="${i+1}" rcardinality="${q.choices.length > 2 ? 'Single' : 'Single'}">
+          <material>
+            <mattext texttype="text/html">${q.question}</mattext>
+          </material>
+          <response_lid ident="response${idx}" rcardinality="Single">
             <render_choice>
-${q.choices.map((c,j) => `              <response_label ident="${j+1}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
+${q.choices.map((c, j) => `              <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
             </render_choice>
           </response_lid>
         </presentation>
         <resprocessing>
-          <outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+          <outcomes>
+            <decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/>
+          </outcomes>
           <respcondition continue="No">
-            <conditionvar><varequal respident="${i+1}">${q.answer+1}</varequal></conditionvar>
+            <conditionvar>
+              <varequal respident="response${idx}">choice${q.answer}</varequal>
+            </conditionvar>
             <setvar action="Set" varname="SCORE">100</setvar>
           </respcondition>
         </resprocessing>
-      </item>`).join("\n")}
+      </item>`;
+}).join("\n")}
     </section>
   </assessment>
 </questestinterop>`;
     folder.file(`${resourceId}.xml`, qtiXml);
 
-    // Root manifest referencing the single QTI file
-    const manifest = `<?xml version="1.0" encoding="UTF-8"?>
+    // Root manifest referencing the QTI file
+    const manifestXml = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="MANIFEST1"
-    xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
-    xmlns:imsqti="http://www.imsglobal.org/xsd/imsqti_v1p2"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 imscp_v1p1.xsd">
+          xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
+          xmlns:imsqti="http://www.imsglobal.org/xsd/imsqti_v1p2"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 imscp_v1p1.xsd">
   <organizations>
     <organization identifier="ORG1" structure="hierarchical">
       <item identifier="ITEM1" identifierref="${resourceId}"/>
@@ -80,15 +119,14 @@ ${q.choices.map((c,j) => `              <response_label ident="${j+1}"><material
     </resource>
   </resources>
 </manifest>`;
-    zip.file('imsmanifest.xml', manifest);
+    zip.file('imsmanifest.xml', manifestXml);
 
-    // Schoology required placeholders
-    ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
+    // Required placeholder files
+    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach(name => {
       const tag = name.split('.')[0];
       zip.file(name, `<${tag}/>`);
     });
 
-    // Generate blob URL
     const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
   };
