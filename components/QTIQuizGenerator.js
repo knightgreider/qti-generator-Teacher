@@ -6,13 +6,14 @@ export default function QTIQuizGenerator() {
   const [rawInput, setRawInput] = useState("");
   const [questions, setQuestions] = useState([]);
   const [zipUrl, setZipUrl] = useState("");
+  const [downloadName, setDownloadName] = useState("quiz.imscc");
 
   // Parse Aiken, Gift (essay), MC::, TF::, ES:: formatted input
   const parseRawInput = () => {
     const blocks = rawInput.split(/\r?\n\s*\r?\n/).map(b => b.trim()).filter(Boolean);
     const parsed = blocks.map(block => {
       const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      // Aiken format: first line question, next lines A. B. etc, last line ANSWER: X
+      // Aiken format
       const aikenAnswer = lines[lines.length - 1].match(/^ANSWER:\s*([A-Z])/i);
       if (aikenAnswer) {
         const questionText = lines[0];
@@ -21,12 +22,12 @@ export default function QTIQuizGenerator() {
         const answerIndex = answerLetter.charCodeAt(0) - 65;
         return { type: 'MC', question: questionText, choices, answer: answerIndex };
       }
-      // Gift essay: question text { } block
+      // Gift essay
       const giftEssayMatch = block.match(/^(.+?)\s*\{\s*\}/s);
       if (giftEssayMatch) {
         return { type: 'ES', question: giftEssayMatch[1].trim(), choices: [], answer: 0 };
       }
-      // Prefixed formats MC::, TF::, ES::
+      // Prefixed formats
       const header = lines[0].match(/^(MC|TF|ES)::\s*(.+)$/);
       if (header) {
         const type = header[1];
@@ -55,7 +56,7 @@ export default function QTIQuizGenerator() {
     const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
     const folder = zip.folder(resourceId);
 
-    // composite QTI
+    // Composite QTI
     const qtiXml = `<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd">
   <assessment ident="${resourceId}" title="${title}">
@@ -76,7 +77,7 @@ ${questions.map((q,i) => {
           <material><mattext texttype="text/html">${q.question}</mattext></material>
           ${isEssay
             ? `<response_str ident="response${idx}" rcardinality="Single"><render_fib/></response_str>`
-            : `<response_lid ident="response${idx}" rcardinality="${q.type==='TF'?'Single':q.choices.length>1?'Single':'Single'}">
+            : `<response_lid ident="response${idx}" rcardinality="Single">
             <render_choice>
 ${q.choices.map((c,j) => `              <response_label ident="choice${j+1}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join("\n")}
             </render_choice>
@@ -111,18 +112,18 @@ ${q.choices.map((c,j) => `              <response_label ident="choice${j+1}"><ma
     });
 
     const blob = await zip.generateAsync({ type: 'blob' });
-    const safeTitle = title.replace(/[^\w-]/g, '_');
+    const safeTitle = title.replace(/[^\w-]/g, '_') || 'quiz';
+    setDownloadName(`${safeTitle}.imscc`);
     setZipUrl(URL.createObjectURL(blob));
-    document.getElementById('downloadLink').setAttribute('download', `${safeTitle}.imscc`);
   };
 
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
       <input placeholder="Quiz Title" value={title} onChange={e => setTitle(e.target.value)} style={{ width: '100%', marginBottom: 8, padding: 4 }} />
-      <textarea placeholder="Paste Aiken, Gift essay, or MC::, TF::, ES:: questions" value={rawInput} onChange={e => setRawInput(e.target.value)} style={{ width: '100%', height: 150, marginBottom: 8 }} />
+      <textarea placeholder="Paste questions" value={rawInput} onChange={e => setRawInput(e.target.value)} style={{ width: '100%', height: 150, marginBottom: 8 }} />
       <button onClick={parseRawInput} disabled={!rawInput}>Parse</button>
       {questions.length > 0 && <button onClick={generateIMSCC} style={{ marginLeft: 8 }}>Download .imscc</button>}
-      {zipUrl && <div style={{ marginTop: 8 }}><a id="downloadLink" href={zipUrl}>Download IMSCC</a></div>}
+      {zipUrl && <div style={{ marginTop: 8 }}><a download={downloadName} href={zipUrl}>Download IMSCC</a></div>}
     </div>
   );
 }
