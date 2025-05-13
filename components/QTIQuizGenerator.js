@@ -85,7 +85,7 @@ ${q.choices.map((c,j) => `              <response_label ident="${j+1}"><material
     // Schoology required placeholders
     ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
       const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>');
+      zip.file(name, `<${tag}/>`);
     });
 
     // Generate blob URL
