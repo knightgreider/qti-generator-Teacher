@@ -1,158 +1,140 @@
-import { useState } from "react";
-import JSZip from "jszip";
+import { useState } from 'react';
+import JSZip from 'jszip';
 
 export default function QTIQuizGenerator() {
-  const [title, setTitle] = useState("");
-  const [rawInput, setRawInput] = useState("");
-  const [zipUrl, setZipUrl] = useState("");
-  const [downloadName, setDownloadName] = useState("quiz.imscc");
+  const [title, setTitle] = useState('');
+  const [rawInput, setRawInput] = useState('');
+  const [zipUrl, setZipUrl] = useState('');
 
-  // Parse raw input into question objects
+  // Parse raw Aiken/GIFT-style input with MC::, TF::, ES::, ESSAY::
   const parseRawInput = (input) => {
-    const blocks = input
+    return input
       .split(/\r?\n\r?\n+/)
       .map((b) => b.trim())
-      .filter(Boolean);
-    const parsed = blocks
+      .filter(Boolean)
       .map((block) => {
-        const lines = block
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean);
-        // Aiken format
-        const aikenAnswer = lines[lines.length - 1].match(/^ANSWER:\s*([A-Z])/i);
-        if (aikenAnswer) {
-          const questionText = lines[0];
-          const choices = lines.slice(1, -1).map((l) => l.replace(/^[A-Z]\.\s*/, "").trim());
-          const answerLetter = aikenAnswer[1].toUpperCase();
-          const answerIndex = answerLetter.charCodeAt(0) - 65;
-          return { type: "MC", question: questionText, choices, answer: answerIndex };
-        }
-        // Gift essay
-        if (/^(.+?)\s*\{\s*\}/s.test(block)) {
-          const q = block.replace(/\{\s*\}/s, '').trim();
-          return { type: "ES", question: q, choices: [], answer: 0 };
-        }
-        // Prefixed formats
+        const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
         const header = lines[0].match(/^(MC|TF|ES|ESSAY)::\s*(.+)$/i);
-        if (header) {
-          let type = header[1].toUpperCase();
-          if (type === "ESSAY") type = "ES";
-          const questionText = header[2].trim();
-          let choices = [];
-          let answerIndex = 0;
-          if (type === "MC" || type === "TF") {
-            lines.slice(1).forEach((line, idx) => {
-              const isCorrect = line.startsWith("*~");
-              const text = line.replace(/^[*]?~/, '').trim();
-              choices.push(text);
-              if (isCorrect) answerIndex = idx;
-            });
-          }
-          return { type, question: questionText, choices, answer: answerIndex };
+        if (!header) return null;
+        let type = header[1].toUpperCase();
+        if (type === 'ESSAY') type = 'ES';
+        const questionText = header[2].trim();
+        if (type === 'MC' || type === 'TF') {
+          const choices = [];
+          let answer = 0;
+          lines.slice(1).forEach((line, idx) => {
+            const correct = line.startsWith('*~');
+            const text = line.replace(/^[*]?~/, '').trim();
+            choices.push(text);
+            if (correct) answer = idx;
+          });
+          return { type, question: questionText, choices, answer };
+        } else {
+          return { type, question: questionText, choices: [], answer: 0 };
         }
-        return null;
       })
       .filter(Boolean);
-    return parsed;
   };
 
-  // Generate IMSCC package
   const generateIMSCC = async () => {
-    if (!title) { alert('Enter quiz title'); return; }
+    if (!title.trim()) { alert('Please provide a quiz title.'); return; }
+    if (!rawInput.trim())  { alert('Please paste quiz questions.'); return; }
     const questions = parseRawInput(rawInput);
-    if (questions.length === 0) { alert('No questions parsed'); return; }
+    if (!questions.length) { alert('No questions parsed. Check format.'); return; }
 
     const zip = new JSZip();
-    const resourceId = 'ccres' + Math.random().toString(36).substr(2, 8);
-    const folder = zip.folder(resourceId);
+    const safeTitle = title.replace(/[^\w-]/g, '_') || 'quiz';
+    const resourceId = 'ccres' + Math.random().toString(36).substr(2,8);
 
-    // Build QTI items
-    const qtiItems = questions.map((q, i) => {
-      const idx = i + 1;
-      const isEssay = q.type === 'ES';
-      let meta = `<qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>${isEssay ? 'cc.essay.v0p1' : (q.choices.length > 2 ? 'cc.multiple_choice.v0p1' : 'cc.true_false.v0p1')}</fieldentry></qtimetadatafield>`;
-      if (isEssay) meta += `<qtimetadatafield><fieldlabel>qmd_computerscored</fieldlabel><fieldentry>No</fieldentry></qtimetadatafield>`;
+    // Build individual <item> XML for each question
+    const itemsXML = questions.map((q, i) => {
+      const id = i + 1;
+      // itemmetadata with cc_profile
+      const profile = q.type === 'MC' ? 'cc.multiple_choice.v0p1'
+                    : q.type === 'TF' ? 'cc.multiple_choice.v0p1'
+                    : q.type === 'ES' ? 'cc.essay.v0p1'
+                    : '';
+      const metaXML = profile ? `<itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>${profile}</fieldentry></qtimetadatafield>${q.type==='ES'? '<qtimetadatafield><fieldlabel>qmd_computerscored</fieldlabel><fieldentry>No</fieldentry></qtimetadatafield>':''}</qtimetadata></itemmetadata>` : '';
 
-      let pres;
-      if (isEssay) {
-        pres = `<presentation>
-  <material><mattext texttype="text/html">${q.question}</mattext></material>
-  <response_str rcardinality="Single" ident="response${idx}">
-    <render_fib>
-      <response_label ident="response${idx}_label" rshuffle="No"/>
-    </render_fib>
-  </response_str>
-</presentation>`;
+      // presentation
+      let presXML = `<presentation><material><mattext texttype="text/html">${q.question}</mattext></material>`;
+      if (q.choices.length > 0) {
+        presXML += `<response_lid ident="resp${id}" rcardinality="${q.type==='TF'? 'Single':'Single'}"><render_choice>` +
+          q.choices.map((c,j) => `
+            <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join('') +
+          `</render_choice></response_lid>`;
       } else {
-        const choicesXml = q.choices.map((c,j) => `<response_label ident="choice${j+1}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join('');
-        pres = `<presentation>
-  <material><mattext texttype="text/html">${q.question}</mattext></material>
-  <response_lid ident="response${idx}" rcardinality="Single">
-    <render_choice>${choicesXml}</render_choice>
-  </response_lid>
-</presentation>`;
+        presXML += `<response_str ident="resp${id}" rcardinality="Single"/>`;
       }
+      presXML += `</presentation>`;
 
-      const comp = isEssay ? '' : `<varequal respident="response${idx}">${q.answer+1}</varequal>`;
-      const proc = `<resprocessing>
-  <outcomes><decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/></outcomes>
-  <respcondition continue="No"><conditionvar>${comp}</conditionvar><setvar action="Set" varname="SCORE">100</setvar></respcondition>
-</resprocessing>`;
+      // resprocessing
+      let respXML = `<resprocessing><outcomes><decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/></outcomes>`;
+      if (q.choices.length > 0) {
+        respXML += `<respcondition continue="No"><conditionvar><varequal respident="resp${id}">choice${q.answer}</varequal></conditionvar><setvar action="Set" varname="SCORE">100</setvar></respcondition>`;
+      } else {
+        respXML += `<respcondition continue="No"><conditionvar><other/></conditionvar><setvar action="Set" varname="SCORE">0</setvar></respcondition>`;
+      }
+      respXML += `</resprocessing>`;
 
-      return `<item ident="${idx}">
-  <itemmetadata>${meta}</itemmetadata>
-  ${pres}
-  ${proc}
-</item>`;
+      return `<item ident="${id}" title="${q.question}">${metaXML}${presXML}${respXML}</item>`;
     }).join('');
 
-    const qti = `<?xml version="1.0" encoding="UTF-8"?>
-<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2">
+    // Wrap all items in one assessment
+    const qtiXML = `<?xml version="1.0" encoding="UTF-8"?>
+<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd">
   <assessment ident="${resourceId}" title="${title}">
-    <qtimetadata>
-      <qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>cc.exam.v0p1</fieldentry></qtimetadatafield>
-      <qtimetadatafield><fieldlabel>qmd_assessmenttype</fieldlabel><fieldentry>Examination</fieldentry></qtimetadatafield>
-      <qtimetadatafield><fieldlabel>qmd_scoretype</fieldlabel><fieldentry>Percentage</fieldentry></qtimetadatafield>
-      <qtimetadatafield><fieldlabel>cc_maxattempts</fieldlabel><fieldentry>1</fieldentry></qtimetadatafield>
-    </qtimetadata>
     <section ident="root_section">
-${qtiItems}
+      ${itemsXML}
     </section>
   </assessment>
 </questestinterop>`;
 
-    folder.file(`${resourceId}.xml`, qti);
-
-    // manifest
-    const manifest = `<?xml version="1.0" encoding="UTF-8"?>
-<manifest identifier="MANIFEST1" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1">
-  <organizations><organization identifier="ORG1" structure="hierarchical"><item identifier="ITEM1" identifierref="${resourceId}"/></organization></organizations>
+    // Package into IMSCC
+    const folder = zip.folder(resourceId);
+    folder.file(`${resourceId}.xml`, qtiXML);
+    zip.file('imsmanifest.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="MAN1" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1" xmlns:imsmd="http://www.imsglobal.org/xsd/imsmd_v1p2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <organizations>
+    <organization identifier="ORG1">
+      <item identifier="I-${resourceId}" identifierref="RES-${resourceId}">
+        <title>${title}</title>
+      </item>
+    </organization>
+  </organizations>
   <resources>
-    <resource identifier="${resourceId}" type="imsqti_xmlv1p2" href="${resourceId}/${resourceId}.xml">
+    <resource identifier="RES-${resourceId}" type="imsqti_item_xmlv2p1" href="${resourceId}/${resourceId}.xml">
       <file href="${resourceId}/${resourceId}.xml"/>
     </resource>
   </resources>
-</manifest>`;
-    zip.file('imsmanifest.xml', manifest);
+</manifest>`);
 
-    ['context.xml','course_settings.xml','files_meta.xml','media_tracks.xml'].forEach(name => {
-      const tag = name.split('.')[0];
-      zip.file(name, `<${tag}/>`);
-    });
-
-    const blob = await zip.generateAsync({type:'blob'});
-    const safe = title.replace(/[^\w-]/g,'_')||'quiz';
-    setDownloadName(`${safe}.imscc`);
+    const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
   };
 
   return (
-    <div style={{padding:'1rem',fontFamily:'sans-serif'}}>
-      <input placeholder="Quiz Title" value={title} onChange={e=>setTitle(e.target.value)} style={{width:'100%',marginBottom:8,padding:4}}/>
-      <textarea placeholder="Paste questions separated by blank line" value={rawInput} onChange={e=>setRawInput(e.target.value)} style={{width:'100%',height:200,marginBottom:8}}/>
-      <button onClick={generateIMSCC} disabled={!rawInput||!title}>Generate IMSCC</button>
-      {zipUrl&&<div style={{marginTop:8}}><a href={zipUrl} download={downloadName}>Download IMSCC</a></div>}
+    <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
+      <input
+        placeholder="Quiz Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        style={{ width: '100%', marginBottom: 8, padding: 4 }}
+      />
+      <textarea
+        placeholder="Paste questions (MC::, TF::, ESSAY::)"
+        value={rawInput}
+        onChange={(e) => setRawInput(e.target.value)}
+        style={{ width: '100%', height: 200, marginBottom: 8 }}
+      />
+      <button onClick={generateIMSCC} disabled={!title || !rawInput}>
+        Generate IMSCC
+      </button>
+      {zipUrl && (
+        <a href={zipUrl} download={`${title.replace(/[^\w-]/g, '_') || 'quiz'}.imscc`} style={{ marginLeft: 8 }}>
+          Download .imscc
+        </a>
+      )}
     </div>
   );
 }
