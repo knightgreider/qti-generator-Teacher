@@ -41,8 +41,7 @@ export default function QTIQuizGenerator() {
     if (!questions.length) return alert('No questions parsed. Check format.');
 
     const zip = new JSZip();
-    const safeTitle = title.replace(/[^
-\w-]/g, '_') || 'quiz';
+    const safeTitle = title.replace(/[^\w-]/g, '_') || 'quiz';
     const resourceId = 'ccres' + Math.random().toString(36).substring(2, 10);
 
     // Create folder and QTI XML
@@ -112,13 +111,13 @@ export default function QTIQuizGenerator() {
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
       <input
-        placeholder=\"Quiz Title\"
+        placeholder="Quiz Title"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         style={{ width: '100%', marginBottom: 8, padding: 4 }}
       />
       <textarea
-        placeholder=\"Paste questions (MC::, TF::, ES::, ESSAY::) separated by blank line\"
+        placeholder="Paste questions (MC::, TF::, ES::, ESSAY::) separated by blank line"
         value={rawInput}
         onChange={(e) => setRawInput(e.target.value)}
         style={{ width: '100%', height: 200, marginBottom: 8 }}
@@ -127,7 +126,7 @@ export default function QTIQuizGenerator() {
         Generate IMSCC
       </button>
       {zipUrl && (
-        <a href={zipUrl} download={`${title.replace(/[^\\w-]/g,'_')||'quiz'}.imscc`} style={{ marginLeft: 8 }}>
+        <a href={zipUrl} download={`${safeTitle}.imscc`} style={{ marginLeft: 8 }}>
           Download .imscc
         </a>
       )}
