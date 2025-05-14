@@ -7,107 +7,103 @@ export default function QTIQuizGenerator() {
   const [zipUrl, setZipUrl] = useState('');
 
   // Parse raw Aiken/GIFT-style input with MC::, TF::, ES::, ESSAY::
-  const parseRawInput = (input) => {
-    return input
+  const parseRawInput = (input) =>
+    input
       .split(/\r?\n\r?\n+/)
       .map((b) => b.trim())
       .filter(Boolean)
       .map((block) => {
-        const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const lines = block.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
         const header = lines[0].match(/^(MC|TF|ES|ESSAY)::\s*(.+)$/i);
         if (!header) return null;
         let type = header[1].toUpperCase();
         if (type === 'ESSAY') type = 'ES';
-        const questionText = header[2].trim();
+        const question = header[2].trim();
         if (type === 'MC' || type === 'TF') {
           const choices = [];
           let answer = 0;
-          lines.slice(1).forEach((line, idx) => {
-            const correct = line.startsWith('*~');
-            const text = line.replace(/^[*]?~/, '').trim();
+          lines.slice(1).forEach((ln, idx) => {
+            const correct = ln.startsWith('*~');
+            const text = ln.replace(/^[*]?~/, '').trim();
             choices.push(text);
             if (correct) answer = idx;
           });
-          return { type, question: questionText, choices, answer };
-        } else {
-          return { type, question: questionText, choices: [], answer: 0 };
+          return { type, question, choices, answer };
         }
+        return { type, question, choices: [], answer: 0 };
       })
       .filter(Boolean);
-  };
 
   const generateIMSCC = async () => {
-    if (!title.trim()) { alert('Please provide a quiz title.'); return; }
-    if (!rawInput.trim())  { alert('Please paste quiz questions.'); return; }
+    if (!title.trim()) return alert('Please provide a quiz title.');
+    if (!rawInput.trim()) return alert('Please paste quiz questions.');
     const questions = parseRawInput(rawInput);
-    if (!questions.length) { alert('No questions parsed. Check format.'); return; }
+    if (!questions.length) return alert('No questions parsed. Check format.');
 
     const zip = new JSZip();
-    const safeTitle = title.replace(/[^\w-]/g, '_') || 'quiz';
-    const resourceId = 'ccres' + Math.random().toString(36).substr(2,8);
+    const safeTitle = title.replace(/[^
+\w-]/g, '_') || 'quiz';
+    const resourceId = 'ccres' + Math.random().toString(36).substring(2, 10);
 
-    // Build individual <item> XML for each question
+    // Create folder and QTI XML
+    const folder = zip.folder(resourceId);
     const itemsXML = questions.map((q, i) => {
       const id = i + 1;
-      // itemmetadata with cc_profile
-      const profile = q.type === 'MC' ? 'cc.multiple_choice.v0p1'
-                    : q.type === 'TF' ? 'cc.multiple_choice.v0p1'
-                    : q.type === 'ES' ? 'cc.essay.v0p1'
-                    : '';
-      const metaXML = profile ? `<itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>${profile}</fieldentry></qtimetadatafield>${q.type==='ES'? '<qtimetadatafield><fieldlabel>qmd_computerscored</fieldlabel><fieldentry>No</fieldentry></qtimetadatafield>':''}</qtimetadata></itemmetadata>` : '';
-
-      // presentation
-      let presXML = `<presentation><material><mattext texttype="text/html">${q.question}</mattext></material>`;
-      if (q.choices.length > 0) {
-        presXML += `<response_lid ident="resp${id}" rcardinality="${q.type==='TF'? 'Single':'Single'}"><render_choice>` +
-          q.choices.map((c,j) => `
-            <response_label ident="choice${j}"><material><mattext texttype="text/plain">${c}</mattext></material></response_label>`).join('') +
+      const profile = q.type === 'ES' ? 'cc.essay.v0p1' : 'cc.multiple_choice.v0p1';
+      const meta = `<itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>${profile}</fieldentry></qtimetadatafield>${q.type==='ES'?'<qtimetadatafield><fieldlabel>qmd_computerscored</fieldlabel><fieldentry>No</fieldentry></qtimetadatafield>':''}</qtimetadata></itemmetadata>`;
+      let pres = `<presentation><material><mattext texttype=\"text/html\">${q.question}</mattext></material>`;
+      if (q.choices.length) {
+        pres += `<response_lid ident=\"resp${id}\" rcardinality=\"Single\"><render_choice>` +
+          q.choices.map((c, j) => `<response_label ident=\"choice${j}\"><material><mattext texttype=\"text/plain\">${c}</mattext></material></response_label>`).join('') +
           `</render_choice></response_lid>`;
       } else {
-        presXML += `<response_str ident="resp${id}" rcardinality="Single"/>`;
+        pres += `<response_str ident=\"resp${id}\" rcardinality=\"Single\"/>`;
       }
-      presXML += `</presentation>`;
-
-      // resprocessing
-      let respXML = `<resprocessing><outcomes><decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/></outcomes>`;
-      if (q.choices.length > 0) {
-        respXML += `<respcondition continue="No"><conditionvar><varequal respident="resp${id}">choice${q.answer}</varequal></conditionvar><setvar action="Set" varname="SCORE">100</setvar></respcondition>`;
+      pres += `</presentation>`;
+      let proc = `<resprocessing><outcomes><decvar varname=\"SCORE\" vartype=\"Decimal\" minvalue=\"0\" maxvalue=\"100\"/></outcomes>`;
+      if (q.choices.length) {
+        proc += `<respcondition continue=\"No\"><conditionvar><varequal respident=\"resp${id}\">choice${q.answer}</varequal></conditionvar><setvar action=\"Set\" varname=\"SCORE\">100</setvar></respcondition>`;
       } else {
-        respXML += `<respcondition continue="No"><conditionvar><other/></conditionvar><setvar action="Set" varname="SCORE">0</setvar></respcondition>`;
+        proc += `<respcondition continue=\"No\"><conditionvar><other/></conditionvar><setvar action=\"Set\" varname=\"SCORE\">0</setvar></respcondition>`;
       }
-      respXML += `</resprocessing>`;
-
-      return `<item ident="${id}" title="${q.question}">${metaXML}${presXML}${respXML}</item>`;
+      proc += `</resprocessing>`;
+      return `<item ident=\"${id}\" title=\"${q.question}\">${meta}${pres}${proc}</item>`;
     }).join('');
 
-    // Wrap all items in one assessment
-    const qtiXML = `<?xml version="1.0" encoding="UTF-8"?>
-<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd">
-  <assessment ident="${resourceId}" title="${title}">
-    <section ident="root_section">
+    const qti = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<questestinterop xmlns=\"http://www.imsglobal.org/xsd/ims_qtiasiv1p2\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd\">
+  <assessment ident=\"${resourceId}\" title=\"${title}\">
+    <section ident=\"root_section\">
       ${itemsXML}
     </section>
   </assessment>
 </questestinterop>`;
 
-    // Package into IMSCC
-    const folder = zip.folder(resourceId);
-    folder.file(`${resourceId}.xml`, qtiXML);
-    zip.file('imsmanifest.xml', `<?xml version="1.0" encoding="UTF-8"?>
-<manifest identifier="MAN1" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1" xmlns:imsmd="http://www.imsglobal.org/xsd/imsmd_v1p2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <organizations>
-    <organization identifier="ORG1">
-      <item identifier="I-${resourceId}" identifierref="RES-${resourceId}">
+    folder.file(`${resourceId}.xml`, qti);
+
+    // IMS manifest with correct resource identifier
+    const manifest = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<manifest identifier=\"MANIFEST_1\" xmlns=\"http://www.imsglobal.org/xsd/imscp_v1p1\">
+  <organizations default=\"ORG1\">
+    <organization identifier=\"ORG1\" structure=\"hierarchical\">
+      <item identifier=\"ITEM_${resourceId}\" identifierref=\"${resourceId}\">
         <title>${title}</title>
       </item>
     </organization>
   </organizations>
   <resources>
-    <resource identifier="RES-${resourceId}" type="imsqti_item_xmlv2p1" href="${resourceId}/${resourceId}.xml">
-      <file href="${resourceId}/${resourceId}.xml"/>
+    <resource identifier=\"${resourceId}\" type=\"imsqti_xmlv1p2\" href=\"${resourceId}/${resourceId}.xml\">
+      <file href=\"${resourceId}/${resourceId}.xml\"/>
     </resource>
   </resources>
-</manifest>`);
+</manifest>`;
+    zip.file('imsmanifest.xml', manifest);
+
+    // Placeholder metadata files for Schoology
+    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach((f) => {
+      const tag = f.split('.')[0];
+      zip.file(f, `<${tag}/>`);
+    });
 
     const blob = await zip.generateAsync({ type: 'blob' });
     setZipUrl(URL.createObjectURL(blob));
@@ -116,13 +112,13 @@ export default function QTIQuizGenerator() {
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
       <input
-        placeholder="Quiz Title"
+        placeholder=\"Quiz Title\"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         style={{ width: '100%', marginBottom: 8, padding: 4 }}
       />
       <textarea
-        placeholder="Paste questions (MC::, TF::, ESSAY::)"
+        placeholder=\"Paste questions (MC::, TF::, ES::, ESSAY::) separated by blank line\"
         value={rawInput}
         onChange={(e) => setRawInput(e.target.value)}
         style={{ width: '100%', height: 200, marginBottom: 8 }}
@@ -131,7 +127,7 @@ export default function QTIQuizGenerator() {
         Generate IMSCC
       </button>
       {zipUrl && (
-        <a href={zipUrl} download={`${title.replace(/[^\w-]/g, '_') || 'quiz'}.imscc`} style={{ marginLeft: 8 }}>
+        <a href={zipUrl} download={`${title.replace(/[^\\w-]/g,'_')||'quiz'}.imscc`} style={{ marginLeft: 8 }}>
           Download .imscc
         </a>
       )}
