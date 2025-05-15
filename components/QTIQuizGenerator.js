@@ -6,10 +6,8 @@ export default function QTIQuizGenerator() {
   const [rawInput, setRawInput] = useState('');
   const [zipUrl, setZipUrl] = useState('');
 
-  // Compute safe filename based on title
-  const safeTitle = title ? title.replace(/[^\w-]/g, '_') : 'quiz';
+  const safeTitle = title.trim() ? title.replace(/[^\w-]/g, '_') : 'quiz';
 
-  // Parse raw Aiken/GIFT-style input with MC::, TF::, ES::, ESSAY::
   const parseRawInput = (input) =>
     input
       .split(/\r?\n\r?\n+/)
@@ -45,31 +43,44 @@ export default function QTIQuizGenerator() {
 
     const zip = new JSZip();
     const resourceId = 'ccres' + Math.random().toString(36).substring(2, 10);
-
-    // Create folder and QTI XML
     const folder = zip.folder(resourceId);
-    const itemsXML = questions.map((q, i) => {
-      const id = i + 1;
-      const profile = q.type === 'ES' ? 'cc.essay.v0p1' : 'cc.multiple_choice.v0p1';
-      const meta = `<itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>${profile}</fieldentry></qtimetadatafield>${q.type==='ES'?'<qtimetadatafield><fieldlabel>qmd_computerscored</fieldlabel><fieldentry>No</fieldentry></qtimetadatafield>':''}</qtimetadata></itemmetadata>`;
-      let pres = `<presentation><material><mattext texttype=\"text/html\">${q.question}</mattext></material>`;
-      if (q.choices.length) {
-        pres += `<response_lid ident=\"resp${id}\" rcardinality=\"Single\"><render_choice>` +
-          q.choices.map((c, j) => `<response_label ident=\"choice${j}\"><material><mattext texttype=\"text/plain\">${c}</mattext></material></response_label>`).join('') +
-          `</render_choice></response_lid>`;
-      } else {
-        pres += `<response_str ident=\"resp${id}\" rcardinality=\"Single\"/>`;
-      }
-      pres += `</presentation>`;
-      let proc = `<resprocessing><outcomes><decvar varname=\"SCORE\" vartype=\"Decimal\" minvalue=\"0\" maxvalue=\"100\"/></outcomes>`;
-      if (q.choices.length) {
-        proc += `<respcondition continue=\"No\"><conditionvar><varequal respident=\"resp${id}\">choice${q.answer}</varequal></conditionvar><setvar action=\"Set\" varname=\"SCORE\">100</setvar></respcondition>`;
-      } else {
-        proc += `<respcondition continue=\"No\"><conditionvar><other/></conditionvar><setvar action=\"Set\" varname=\"SCORE\">0</setvar></respcondition>`;
-      }
-      proc += `</resprocessing>`;
-      return `<item ident=\"${id}\" title=\"${q.question}\">${meta}${pres}${proc}</item>`;
-    }).join('');
+
+    const itemsXML = questions
+      .map((q, i) => {
+        const id = i + 1;
+        const profile = q.type === 'ES' ? 'cc.essay.v0p1' : 'cc.multiple_choice.v0p1';
+        const meta = `<itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>cc_profile</fieldlabel><fieldentry>${profile}</fieldentry></qtimetadatafield>${
+          q.type === 'ES'
+            ? '<qtimetadatafield><fieldlabel>qmd_computerscored</fieldlabel><fieldentry>No</fieldentry></qtimetadatafield>'
+            : ''
+        }</qtimetadata></itemmetadata>`;
+        let pres = `<presentation><material><mattext texttype=\"text/html\">${q.question}</mattext></material>`;
+        if (q.choices.length) {
+          pres += `<response_lid ident=\"resp${id}\" rcardinality=\"Single\"><render_choice>`;
+          pres += q.choices
+            .map(
+              (c, j) =>
+                `<response_label ident=\"choice${j}\"><material><mattext texttype=\"text/plain\">${c}</mattext></material></response_label>`
+            )
+            .join('');
+          pres += `</render_choice></response_lid>`;
+        } else {
+          pres += `<response_str ident=\"resp${id}\" rcardinality=\"Single\"/>`;
+        }
+        pres += `</presentation>`;
+
+        let proc = `<resprocessing><outcomes><decvar varname=\"SCORE\" vartype=\"Decimal\" minvalue=\"0\" maxvalue=\"100\"/></outcomes>`;
+        if (q.choices.length) {
+          proc +=
+            `<respcondition continue=\"No\"><conditionvar><varequal respident=\"resp${id}\">choice${q.answer}</varequal></conditionvar><setvar action=\"Set\" varname=\"SCORE\">100</setvar></respcondition>`;
+        } else {
+          proc +=
+            `<respcondition continue=\"No\"><conditionvar><other/></conditionvar><setvar action=\"Set\" varname=\"SCORE\">0</setvar></respcondition>`;
+        }
+        proc += `</resprocessing>`;
+        return `<item ident=\"${id}\" title=\"${q.question}\">${meta}${pres}${proc}</item>`;
+      })
+      .join('');
 
     const qti = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <questestinterop xmlns=\"http://www.imsglobal.org/xsd/ims_qtiasiv1p2\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.imsglobal.org/xsd/ims_qtiasiv1p2 http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_qtiasiv1p2p1_v1p0.xsd\">
@@ -82,9 +93,48 @@ export default function QTIQuizGenerator() {
 
     folder.file(`${resourceId}.xml`, qti);
 
-    // IMS manifest with correct resource identifier
     const manifest = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <manifest identifier=\"MANIFEST_1\" xmlns=\"http://www.imsglobal.org/xsd/imscp_v1p1\">
   <organizations default=\"ORG1\">
     <organization identifier=\"ORG1\" structure=\"hierarchical\">
-      <item identifier=\"ITEM_${resourceId}\" identifierref=\"${resourceId}\">```
+      <item identifier=\"ITEM_${resourceId}\" identifierref=\"${resourceId}\" />
+    </organization>
+  </organizations>
+  <resources>
+    <resource identifier=\"${resourceId}\" type=\"imsqti_xmlv1p2\" href=\"${resourceId}/${resourceId}.xml\" />
+  </resources>
+</manifest>`;
+
+    zip.file('imsmanifest.xml', manifest);
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    setZipUrl(URL.createObjectURL(blob));
+  };
+
+  return (
+    <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
+      <input
+        placeholder="Quiz Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        style={{ width: '100%', marginBottom: 8, padding: 4 }}
+      />
+      <textarea
+        placeholder="Paste questions (MC::, TF::, ES::, ESSAY::)"
+        value={rawInput}
+        onChange={(e) => setRawInput(e.target.value)}
+        style={{ width: '100%', height: 150, marginBottom: 8 }}
+      />
+      <button onClick={generateIMSCC} disabled={!rawInput.trim()}>
+        Download .imscc
+      </button>
+      {zipUrl && (
+        <div style={{ marginTop: 8 }}>
+          <a href={zipUrl} download={`${safeTitle}.imscc`} id="downloadLink">
+            Click to Download
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
