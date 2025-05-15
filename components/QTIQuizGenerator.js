@@ -6,6 +6,9 @@ export default function QTIQuizGenerator() {
   const [rawInput, setRawInput] = useState('');
   const [zipUrl, setZipUrl] = useState('');
 
+  // Compute safe filename based on title
+  const safeTitle = title ? title.replace(/[^\w-]/g, '_') : 'quiz';
+
   // Parse raw Aiken/GIFT-style input with MC::, TF::, ES::, ESSAY::
   const parseRawInput = (input) =>
     input
@@ -41,7 +44,6 @@ export default function QTIQuizGenerator() {
     if (!questions.length) return alert('No questions parsed. Check format.');
 
     const zip = new JSZip();
-    const safeTitle = title.replace(/[^\w-]/g, '_') || 'quiz';
     const resourceId = 'ccres' + Math.random().toString(36).substring(2, 10);
 
     // Create folder and QTI XML
@@ -85,51 +87,4 @@ export default function QTIQuizGenerator() {
 <manifest identifier=\"MANIFEST_1\" xmlns=\"http://www.imsglobal.org/xsd/imscp_v1p1\">
   <organizations default=\"ORG1\">
     <organization identifier=\"ORG1\" structure=\"hierarchical\">
-      <item identifier=\"ITEM_${resourceId}\" identifierref=\"${resourceId}\">
-        <title>${title}</title>
-      </item>
-    </organization>
-  </organizations>
-  <resources>
-    <resource identifier=\"${resourceId}\" type=\"imsqti_xmlv1p2\" href=\"${resourceId}/${resourceId}.xml\">
-      <file href=\"${resourceId}/${resourceId}.xml\"/>
-    </resource>
-  </resources>
-</manifest>`;
-    zip.file('imsmanifest.xml', manifest);
-
-    // Placeholder metadata files for Schoology
-    ['context.xml', 'course_settings.xml', 'files_meta.xml', 'media_tracks.xml'].forEach((f) => {
-      const tag = f.split('.')[0];
-      zip.file(f, `<${tag}/>`);
-    });
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    setZipUrl(URL.createObjectURL(blob));
-  };
-
-  return (
-    <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
-      <input
-        placeholder="Quiz Title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        style={{ width: '100%', marginBottom: 8, padding: 4 }}
-      />
-      <textarea
-        placeholder="Paste questions (MC::, TF::, ES::, ESSAY::) separated by blank line"
-        value={rawInput}
-        onChange={(e) => setRawInput(e.target.value)}
-        style={{ width: '100%', height: 200, marginBottom: 8 }}
-      />
-      <button onClick={generateIMSCC} disabled={!title || !rawInput}>
-        Generate IMSCC
-      </button>
-      {zipUrl && (
-        <a href={zipUrl} download={`${safeTitle}.imscc`} style={{ marginLeft: 8 }}>
-          Download .imscc
-        </a>
-      )}
-    </div>
-  );
-}
+      <item identifier=\"ITEM_${resourceId}\" identifierref=\"${resourceId}\">```
